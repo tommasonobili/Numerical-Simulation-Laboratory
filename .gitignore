@@ -1,0 +1,11 @@
+# Compiled files
+*.o
+*.exe
+*.so
+
+# Python/Jupyter cache
+__pycache__/
+.ipynb_checkpoints/
+
+# System files
+.DS_Store
