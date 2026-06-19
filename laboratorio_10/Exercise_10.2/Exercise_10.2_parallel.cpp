@@ -1,0 +1,776 @@
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
+#include "random.h"
+#include <cmath>
+#include <algorithm>
+#include <utility>
+#include <mpi.h>
+
+
+using namespace std;
+
+void initialize_random(Random &rnd, int rank) {
+    int seed[4];
+    int p1, p2;
+
+    ifstream Primes("Primes");
+
+    if (Primes.is_open()) {
+        for (int i = 0; i <= rank; i++) {
+            if (!(Primes >> p1 >> p2)) {
+                cerr << "PROBLEM: Not enough prime pairs in Primes for rank "
+                     << rank << endl;
+                break;
+            }
+        }
+    } else {
+        cerr << "PROBLEM: Unable to open Primes" << endl;
+    }
+
+    Primes.close();
+
+    ifstream input("seed.in");
+    string property;
+
+    if (input.is_open()) {
+        while (input >> property) {
+            if (property == "RANDOMSEED") {
+                input >> seed[0] >> seed[1] >> seed[2] >> seed[3];
+
+                rnd.SetRandom(seed, p1, p2);
+            }
+        }
+
+        input.close();
+    } else {
+        cerr << "PROBLEM: Unable to open seed.in" << endl;
+    }
+}
+
+
+struct City {
+    int id;
+    double x;
+    double y;
+};
+
+struct Individual {   // è un percorso
+    vector<int> path;
+    double loss;
+};
+
+vector<City> read_cities(const string &filename) {
+    vector<City> cities;
+
+    ifstream input(filename);
+
+    if (!input.is_open()) {
+        cerr << "PROBLEM: Unable to open " << filename << endl;
+        return cities;
+    }
+
+    City city;  // Crea una variabile temporanea di tipo City
+
+    while (input >> city.id >> city.x >> city.y) {
+        cities.push_back(city);
+    }
+
+    input.close();
+
+    return cities;
+}
+
+
+double distance_between_cities(const City &a, const City &b) {
+    double dx = a.x - b.x;
+    double dy = a.y - b.y;
+
+    return sqrt(dx * dx + dy * dy);
+}
+
+
+//lunghezza totale del percorso di un individuo.
+double path_length(const Individual &individual, const vector<City> &cities) {
+    double length = 0.0;
+
+    int number_of_cities = individual.path.size();
+
+    for (int i = 0; i < number_of_cities - 1; i++) {
+        int id_a = individual.path[i];
+        int id_b = individual.path[i + 1];
+
+        length += distance_between_cities(cities[id_a - 1], cities[id_b - 1]);
+    }
+
+    int last_id = individual.path[number_of_cities - 1];
+    int first_id = individual.path[0];
+
+    length += distance_between_cities(cities[last_id - 1], cities[first_id - 1]);
+
+    return length;
+}
+
+
+//controlla che l indivuiduo abbia senso (path ok, neinte ripetizioni)
+bool check_individual(const Individual &individual, int number_of_cities) {
+    if ((int)individual.path.size() != number_of_cities) {
+        return false;
+    }
+
+    if (individual.path[0] != 1) {
+        return false;
+    }
+
+    vector<int> counter(number_of_cities + 1, 0);
+
+    for (int i = 0; i < number_of_cities; i++) {
+        int city_id = individual.path[i];
+
+        if (city_id < 1 || city_id > number_of_cities) {
+            return false;
+        }
+
+        counter[city_id]++;
+    }
+
+    for (int i = 1; i <= number_of_cities; i++) {
+        if (counter[i] != 1) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+//crea un percorso casuale valido.
+Individual generate_random_individual(Random &rnd, int number_of_cities) {
+    Individual individual;
+
+    individual.path.resize(number_of_cities);
+
+    for (int i = 0; i < number_of_cities; i++) {
+        individual.path[i] = i + 1;
+    }
+
+    for (int i = 1; i < number_of_cities; i++) {
+        int j = i + int(rnd.Rannyu(0.0, double(number_of_cities - i)));
+
+        swap(individual.path[i], individual.path[j]);
+    }
+
+    individual.loss = 0.0;
+
+    return individual;
+}
+
+//crea N individui(percorsi) casuali -> Popolazione
+vector<Individual> generate_population(Random &rnd, int population_size, int number_of_cities) {
+    vector<Individual> population;
+
+    for (int i = 0; i < population_size; i++) {
+        Individual individual = generate_random_individual(rnd, number_of_cities);
+
+        if (!check_individual(individual, number_of_cities)) {
+            cerr << "PROBLEM: generated invalid individual" << endl;
+        }
+
+        population.push_back(individual);
+    }
+
+    return population;
+}
+
+
+void evaluate_population(vector<Individual> &population, const vector<City> &cities) {
+    for (int i = 0; i < (int)population.size(); i++) {
+        population[i].loss = path_length(population[i], cities);
+    }
+}
+
+void sort_population(vector<Individual> &population) {
+    sort(population.begin(), population.end(),
+         [](const Individual &a, const Individual &b) {
+             return a.loss < b.loss;
+         });
+}
+
+
+//-------------------------------------------------------
+//OPERATORI
+//-------------------------------------------------------
+
+//SELETTORE
+
+int select_index(Random &rnd, int population_size, double selection_power) {
+    double r = rnd.Rannyu();
+
+    int index = int(population_size * pow(r, selection_power));
+
+    if (index >= population_size) {
+        index = population_size - 1;
+    }
+
+    return index;
+}
+
+//CROSSOVER
+
+bool contains_city(const vector<int> &path, int city_id, int end_position) {
+    for (int i = 0; i < end_position; i++) {
+        if (path[i] == city_id) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+Individual make_child_from_parents(const Individual &first_parent, const Individual &second_parent, int cut) {
+    int number_of_cities = first_parent.path.size();
+
+    Individual child;
+    child.path.resize(number_of_cities);
+
+    child.path[0] = 1;
+
+    for (int i = 1; i < cut; i++) {
+        child.path[i] = first_parent.path[i];
+    }
+
+    int child_position = cut;
+
+    for (int i = 1; i < number_of_cities; i++) {
+        int candidate_city = second_parent.path[i];
+
+        if (!contains_city(child.path, candidate_city, child_position)) {
+            child.path[child_position] = candidate_city;
+            child_position++;
+        }
+    }
+
+    child.loss = 0.0;
+
+    return child;
+}
+
+pair<Individual, Individual> crossover(Random &rnd, const Individual &mother, const Individual &father) {
+    int number_of_cities = mother.path.size();
+
+    int cut = int(rnd.Rannyu(2.0, double(number_of_cities)));
+
+    Individual child1 = make_child_from_parents(mother, father, cut);
+    Individual child2 = make_child_from_parents(father, mother, cut);
+
+    return make_pair(child1, child2);
+}
+
+
+//MUTATIONS
+
+void swap_mutation(Random &rnd, Individual &individual) {
+    int number_of_cities = individual.path.size();
+
+    int i = int(rnd.Rannyu(1.0, double(number_of_cities)));
+    int j = int(rnd.Rannyu(1.0, double(number_of_cities)));
+
+    while (j == i) {
+        j = int(rnd.Rannyu(1.0, double(number_of_cities)));
+    }
+
+    swap(individual.path[i], individual.path[j]);
+
+    individual.loss = 0.0;
+}
+
+void shift_mutation(Random &rnd, Individual &individual) {
+    int number_of_cities = individual.path.size();
+
+    int tail_size = number_of_cities - 1;
+
+    if (tail_size < 2) {
+        return;
+    }
+
+    int max_block_length = tail_size / 2;
+
+    int block_length = 1 + int(rnd.Rannyu(0.0, double(max_block_length)));
+
+    int start = int(rnd.Rannyu(0.0, double(tail_size - block_length + 1)));
+
+    vector<int> tail(individual.path.begin() + 1, individual.path.end());
+
+    vector<int> block(
+        tail.begin() + start,
+        tail.begin() + start + block_length
+    );
+
+    tail.erase(
+        tail.begin() + start,
+        tail.begin() + start + block_length
+    );
+
+    int insertion_position = int(rnd.Rannyu(0.0, double(tail.size() + 1)));
+
+    while (insertion_position == start) {
+        insertion_position = int(rnd.Rannyu(0.0, double(tail.size() + 1)));
+    }
+
+    tail.insert(
+        tail.begin() + insertion_position,
+        block.begin(),
+        block.end()
+    );
+
+    for (int i = 0; i < tail_size; i++) {
+        individual.path[i + 1] = tail[i];
+    }
+
+    individual.loss = 0.0;
+}
+
+void block_swap_mutation(Random &rnd, Individual &individual) {
+    int number_of_cities = individual.path.size();
+
+    int tail_size = number_of_cities - 1;
+
+    if (tail_size < 4) {
+        return;
+    }
+
+    vector<int> tail(individual.path.begin() + 1, individual.path.end());
+
+    int max_block_length = tail_size / 3;
+
+    if (max_block_length < 1) {
+        return;
+    }
+
+    int block_length = 1 + int(rnd.Rannyu(0.0, double(max_block_length)));
+
+    int max_start = tail_size - block_length;
+
+    int start1 = int(rnd.Rannyu(0.0, double(max_start + 1)));
+
+    vector<int> possible_starts;
+
+    for (int s = 0; s <= max_start; s++) {
+        bool non_overlapping =
+            (s + block_length <= start1) ||
+            (start1 + block_length <= s);
+
+        if (non_overlapping) {
+            possible_starts.push_back(s);
+        }
+    }
+
+    if (possible_starts.size() == 0) {
+        return;
+    }
+
+    int random_index = int(rnd.Rannyu(0.0, double(possible_starts.size())));
+    int start2 = possible_starts[random_index];
+
+    for (int i = 0; i < block_length; i++) {
+        swap(tail[start1 + i], tail[start2 + i]);
+    }
+
+    for (int i = 0; i < tail_size; i++) {
+        individual.path[i + 1] = tail[i];
+    }
+
+    individual.loss = 0.0;
+}
+
+void inversion_mutation(Random &rnd, Individual &individual) {
+    int number_of_cities = individual.path.size();
+
+    int tail_size = number_of_cities - 1;
+
+    if (tail_size < 2) {
+        return;
+    }
+
+    int block_length = 2 + int(rnd.Rannyu(0.0, double(tail_size - 1)));
+
+    int start = int(rnd.Rannyu(0.0, double(tail_size - block_length + 1)));
+
+    reverse(
+        individual.path.begin() + 1 + start,
+        individual.path.begin() + 1 + start + block_length
+    );
+
+    individual.loss = 0.0;
+}
+
+//----------------------------------------------------
+// EVOLUZIONE POPOLAZIONE
+//----------------------------------------------------
+
+vector<Individual> create_next_generation(Random &rnd,
+                                          const vector<Individual> &population,
+                                          int population_size,
+                                          int number_of_cities,
+                                          double selection_power,
+                                          double crossover_probability,
+                                          double swap_probability,
+                                          double shift_probability,
+                                          double block_swap_probability,
+                                          double block_inversion_probability) {
+    vector<Individual> new_population;
+
+    while ((int)new_population.size() < population_size) {
+        int mother_index = select_index(rnd, population_size, selection_power);
+        int father_index = select_index(rnd, population_size, selection_power);
+
+        while (father_index == mother_index) {
+            father_index = select_index(rnd, population_size, selection_power);
+        }
+
+        Individual mother = population[mother_index];
+        Individual father = population[father_index];
+
+        Individual child1;
+        Individual child2;
+
+        if (rnd.Rannyu() < crossover_probability) {
+            pair<Individual, Individual> children = crossover(rnd, mother, father);
+
+            child1 = children.first;
+            child2 = children.second;
+        } else {
+            child1 = mother;
+            child2 = father;
+
+            child1.loss = 0.0;
+            child2.loss = 0.0;
+        }
+
+        if (rnd.Rannyu() < swap_probability) {
+            swap_mutation(rnd, child1);
+        }
+
+        if (rnd.Rannyu() < shift_probability) {
+            shift_mutation(rnd, child1);
+        }
+
+        if (rnd.Rannyu() < swap_probability) {
+            swap_mutation(rnd, child2);
+        }
+
+        if (rnd.Rannyu() < shift_probability) {
+            shift_mutation(rnd, child2);
+        }
+
+        if (rnd.Rannyu() < block_swap_probability) {
+            block_swap_mutation(rnd, child1);
+        }
+
+        if (rnd.Rannyu() < block_swap_probability) {
+            block_swap_mutation(rnd, child2);
+        }
+
+        if (rnd.Rannyu() < block_inversion_probability) {
+            inversion_mutation(rnd, child1);
+        }
+
+        if (rnd.Rannyu() < block_inversion_probability) {
+            inversion_mutation(rnd, child2);
+        }
+
+        if (!check_individual(child1, number_of_cities)) {
+            cerr << "PROBLEM: invalid child 1 in new generation" << endl;
+        }
+
+        if (!check_individual(child2, number_of_cities)) {
+            cerr << "PROBLEM: invalid child 2 in new generation" << endl;
+        }
+
+        new_population.push_back(child1);
+
+        if ((int)new_population.size() < population_size) {
+            new_population.push_back(child2);
+        }
+    }
+
+    return new_population;
+}
+
+
+//----------------------------------------------------
+//OUTPUTS
+//----------------------------------------------------
+
+void print_individual(const Individual &individual) {
+    for (int i = 0; i < (int)individual.path.size(); i++) {
+        cout << individual.path[i] << " ";
+    }
+
+    cout << "   L = " << individual.loss << endl;
+}
+
+double average_best_half(const vector<Individual> &population) {
+    int half_size = population.size() / 2;
+
+    double sum = 0.0;
+
+    for (int i = 0; i < half_size; i++) {
+        sum += population[i].loss;
+    }
+
+    return sum / double(half_size);
+}
+
+void save_best_path(const Individual &best, const string &filename) {
+    ofstream output(filename);
+
+    if (!output.is_open()) {
+        cerr << "PROBLEM: Unable to open " << filename << endl;
+        return;
+    }
+
+    for (int i = 0; i < (int)best.path.size(); i++) {
+        output << best.path[i] << endl;
+    }
+
+    output << best.path[0] << endl;
+
+    output.close();
+}
+
+
+string filename_with_rank(const string &base, int rank) {
+    stringstream ss;
+    ss << "OUTPUT_PARALLEL/" << base << "_parallel_rank_" << rank << ".dat";
+    return ss.str();
+}
+
+string filename_with_rank_and_extension(const string &base, int rank, const string &extension) {
+    stringstream ss;
+    ss << "OUTPUT_PARALLEL/" << base << "_parallel_rank_" << rank << extension;
+    return ss.str();
+
+}
+
+
+
+// SCAMBIO DELLE BEST PATH TRA CORE MPI TRAMITE PERMUTAZIONE CASUALE
+void exchange_best_with_best(Random &rnd,
+                             vector<Individual> &population,
+                             const vector<City> &cities,
+                             int number_of_cities,
+                             int rank,
+                             int size,
+                             int generation) {
+
+    if (size <= 1) {
+        return;
+    }
+
+    vector<int> send_to(size);
+    vector<int> receive_from(size);
+
+    if (rank == 0) {
+        vector<int> permutation(size);
+
+        for (int i = 0; i < size; i++) {
+            permutation[i] = i;
+        }
+
+        for (int i = 0; i < size - 1; i++) {
+            int j = i + int(rnd.Rannyu(0.0, double(size - i)));
+            swap(permutation[i], permutation[j]);
+        }
+
+        for (int i = 0; i < size; i++) {
+            int sender = permutation[i];
+            int receiver = permutation[(i + 1) % size];
+
+            send_to[sender] = receiver;
+            receive_from[receiver] = sender;
+        }
+    }
+
+    MPI_Bcast(send_to.data(), size, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(receive_from.data(), size, MPI_INT, 0, MPI_COMM_WORLD);
+
+    int destination = send_to[rank];
+    int source = receive_from[rank];
+
+    vector<int> send_path = population[0].path;
+    vector<int> receive_path(number_of_cities);
+
+    MPI_Request request;
+
+    MPI_Isend(send_path.data(),
+              number_of_cities,
+              MPI_INT,
+              destination,
+              generation,
+              MPI_COMM_WORLD,
+              &request);
+
+    MPI_Recv(receive_path.data(),
+             number_of_cities,
+             MPI_INT,
+             source,
+             generation,
+             MPI_COMM_WORLD,
+             MPI_STATUS_IGNORE);
+
+    MPI_Wait(&request, MPI_STATUS_IGNORE);
+
+    population[0].path = receive_path;
+    population[0].loss = path_length(population[0], cities);
+
+    if (!check_individual(population[0], number_of_cities)) {
+        cerr << "PROBLEM: invalid individual received by rank "
+             << rank << " at generation " << generation << endl;
+    }
+
+    sort_population(population);
+}
+
+
+int main(int argc, char **argv) {
+
+    MPI_Init(&argc, &argv);
+
+    int rank;
+    int size;
+
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    if (size > 8) {
+        if (rank == 0) {
+            cerr << "PROBLEM: This program is intended to run with at most 8 MPI processes." << endl;
+        }
+
+        MPI_Finalize();
+        return 1;
+    }
+
+    Random rnd;
+    initialize_random(rnd,rank);
+
+    const string cities_filename = "cap_prov_ita.dat";
+
+    //OGNI QUANTO SCAMBIO DI INFO TRA CORE DIVERSI (MIGRATION FREQUENCY)
+    const int migration_frequency = 100;
+
+    const int number_of_cities = 110;
+    const int population_size = 1000;
+    const int number_of_generations = 2000;
+
+    const double selection_power = 2.0;
+    const double crossover_probability = 0.80;
+    const double shift_probability = 0.10;
+    const double swap_probability = 0.10;
+    const double block_swap_probability = 0.10;
+    const double block_inversion_probability = 0.10;
+
+    //early stopping
+    vector<double> early_stopping_best(number_of_generations + 1);
+    vector<double> early_stopping_best_half(number_of_generations + 1);
+
+    vector<City> cities = read_cities(cities_filename);
+
+    if ((int)cities.size() != number_of_cities) {
+        cerr << "PROBLEM: wrong number of cities" << endl;
+        cerr << "Read " << cities.size() << " cities instead of " << number_of_cities << endl;
+        MPI_Finalize();
+        return 1;
+    }
+
+    vector<Individual> population =
+        generate_population(rnd, population_size, number_of_cities);
+
+    evaluate_population(population, cities);
+    sort_population(population);
+
+    if (rank == 0) {
+        cout << "Starting parallel genetic algorithm" << endl;
+        cout << "Number of MPI processes: " << size << endl;
+    }
+
+    //OUTPUT
+    ofstream losses_output(
+        filename_with_rank_and_extension("losses", rank, ".dat")
+    );
+
+    if (!losses_output.is_open()) {
+        cerr << "PROBLEM: Unable to open losses.dat" << endl;
+        MPI_Finalize();
+        return 1;
+    }
+
+    losses_output << 0 << " "
+                  << population[0].loss << " "
+                  << average_best_half(population) << endl;
+
+    //EVOLUTION
+
+    for (int generation = 1; generation <= number_of_generations; generation++) {
+        population = create_next_generation(rnd,
+                                            population,
+                                            population_size,
+                                            number_of_cities,
+                                            selection_power,
+                                            crossover_probability,
+                                            swap_probability,
+                                            shift_probability,
+                                            block_swap_probability,
+                                            block_inversion_probability);
+
+        evaluate_population(population, cities);
+        sort_population(population);
+
+        //SCAMBIO DI BEST TRA DIVERSI CORE
+        if (generation % migration_frequency == 0) {
+            exchange_best_with_best(rnd,
+                                    population,
+                                    cities,
+                                    number_of_cities,
+                                    rank,
+                                    size,
+                                    generation);
+        }
+
+        losses_output << generation << " "
+                      << population[0].loss << " "
+                      << average_best_half(population) << endl;
+
+        //early stopping
+        early_stopping_best[generation]=population[0].loss;
+        early_stopping_best_half[generation]=average_best_half(population);
+
+        // if (generation > 11){
+        //     if ((fabs(early_stopping_best[generation - 10] - early_stopping_best[generation])<=0.000001)&&
+        //         (fabs(early_stopping_best_half[generation - 10] - early_stopping_best_half[generation])<=0.00001)) {
+        //         break;
+        //     }
+        // }
+    }
+
+    save_best_path(
+        population[0],
+        filename_with_rank_and_extension("best_path_final", rank, ".txt")
+    );
+
+    losses_output.close();
+
+    if (rank == 0) {
+        cout << "Finished parallel genetic algorithm" << endl;
+    }
+
+    if (rank == 0) {
+        rnd.SaveSeed();
+    }
+
+    MPI_Finalize();
+
+    return 0;
+}

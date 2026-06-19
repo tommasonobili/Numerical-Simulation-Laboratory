@@ -1,0 +1,18 @@
+SIMULATION_TYPE        0
+RESTART                0
+TEMP                   2.0
+NPART                  108
+RHO                    0.05
+R_CUT                  5.0
+DELTA                  0.001
+NBLOCKS                250
+NSTEPS                 200 
+
+ENDINPUT
+
+NSTEPS era 1000 (prof)
+NBLOCKS era 10 (prof)
+DELTA era 0.001 (prof)
+
+//mettere restart=0 per partire dalla condizione di bassa entropia (metà blocco occupato)
+//mettere restart=1 per partre dalla condizione finale della run precedente 
