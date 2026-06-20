@@ -53,7 +53,7 @@ void progressive_montecarlo_uniform_sampling(Random &rnd, int N_blocks,int throw
       for(int i=0;i<N_blocks;i++){
          double sum=0;
          for(int j=0;j<throws_per_block;j++){
-            sum+=integranda(rnd.Rannyu());
+            sum+=integranda(rnd.Rannyu());         //unica cosa particolare di questo codice
          }
          integral_uniform_sampling[i]=sum/throws_per_block;
          integral_uniform_sampling_2[i]=pow(integral_uniform_sampling[i],2);
@@ -85,7 +85,7 @@ void progressive_montecarlo_importance_sampling(Random &rnd, int N_blocks,int th
       for(int i=0;i<N_blocks;i++){
          double sum=0;
          for(int j=0;j<throws_per_block;j++){
-            double x=rnd.cos_importance_sampling();
+            double x=rnd.cos_importance_sampling();      //unica cosa particolare di questo codice
             sum+=(integranda(x)/(2.0*(1.0-x)));
          }
          integral_importance_sampling[i]=sum/throws_per_block;
