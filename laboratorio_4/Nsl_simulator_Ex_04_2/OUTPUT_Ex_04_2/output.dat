@@ -4,7 +4,7 @@ NPART= 108
 SIDE=      12.9266     12.9266     12.9266
 R_CUT= 5
 DELTA= 0.001
-NBLOCKS= 20
+NBLOCKS= 30
 NSTEPS= 2000
 Reading input completed!
 System initialized!
@@ -29,4 +29,14 @@ Block completed: 17
 Block completed: 18
 Block completed: 19
 Block completed: 20
+Block completed: 21
+Block completed: 22
+Block completed: 23
+Block completed: 24
+Block completed: 25
+Block completed: 26
+Block completed: 27
+Block completed: 28
+Block completed: 29
+Block completed: 30
 Simulation completed!
