@@ -119,7 +119,7 @@ void discrete_rw_function(Random &rnd, int N_blocks,int throws_per_block, int n_
 
          double mean_r2 = sum_r2 / throws_per_block;
 
-         discrete_rw[i][k] = sqrt(mean_r2);
+         discrete_rw[i][k] = sqrt(mean_r2);   // i=blocco, k=passo
          discrete_rw_2[i][k] = discrete_rw[i][k] * discrete_rw[i][k];
       }
    }
