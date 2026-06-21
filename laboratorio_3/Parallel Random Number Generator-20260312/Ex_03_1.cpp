@@ -129,7 +129,7 @@ void monte_carlo_discrete_function(Random &rnd, double progressive_discrete_call
 
         for(int j=0;j<throws_per_block;j++){
 
-            //discrete propagation up to time T
+            //discrete propagation up to time T  (iterative method)
             double ST = S_0;
             for (int t = 0; t < n_steps; t++) {
                 double Z = rnd.Gauss(0.0, 1.0);
