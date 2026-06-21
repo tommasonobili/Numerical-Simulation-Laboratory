@@ -388,7 +388,7 @@ void System :: initialize_properties(){ // Initialize data members used for meas
         _nprop += _n_bins_v;            //vengono misurati N_bin valori  (non va bene n_prop++: non solo 1 valore... tanti bin)
         _bin_size_v = 4.0*sqrt(_temp)/(double)_n_bins_v; // metto sqrt(T) usando teo dell equipartizione dell'en. (il 4 è un fattore che serve a far 
                                                            //stare tutti i valori di v all'interno del range di velocità che ho deciso di considerare,
-                                                           // cioè 4 volte la velocità media)
+                                                           // cioè 4 volte la sqrt(velocità media))
         _measure_pofv = true;
         _index_pofv = index_property;   // Salva la posizione iniziale, dentro il vettore   (INDEX POFV DICE: Il primo bin della distribuzione parte da questa posizione)
                                         // delle proprietà, in cui cominceranno i bin
