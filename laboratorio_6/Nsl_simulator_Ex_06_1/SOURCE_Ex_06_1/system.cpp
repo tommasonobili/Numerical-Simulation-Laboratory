@@ -65,6 +65,7 @@ double System :: Force(int i, int dim){
 }
 
 //modificato Gibbs in esercitazione 6
+
 void System :: move(int i){ // Propose a MC move for particle i
   if(_sim_type == 3){ //Gibbs sampler for Ising
     // ogni variabile viene messa in equilibrio con il “bagno termico” formato dalle altre da cui il nome: heat-bath algorithm
