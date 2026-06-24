@@ -182,10 +182,13 @@ void evaluate_population(vector<Individual> &population, const vector<City> &cit
 
 //ordina la popolazione dal percorso migliore al peggiore
 void sort_population(vector<Individual> &population) {
-    sort(population.begin(), population.end(),
-         [](const Individual &a, const Individual &b) {
-             return a.loss < b.loss;
-         });
+    for (int i = 0; i < (int)population.size(); i++) {
+        for (int j = i + 1; j < (int)population.size(); j++) {
+            if (population[j].loss < population[i].loss) {
+                swap(population[i], population[j]);
+            }
+        }
+    }
 }
 
 
