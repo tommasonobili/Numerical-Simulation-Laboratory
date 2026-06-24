@@ -49,6 +49,7 @@ struct Individual {   // è un percorso
     double loss;
 };
 
+//vettore di città lette da file
 vector<City> read_cities(const string &filename) {
     vector<City> cities;
 
@@ -101,7 +102,7 @@ double path_length(const Individual &individual, const vector<City> &cities) {
 }
 
 
-//controlla che l indivuiduo abbia senso (path ok, neinte ripetizioni)
+//controlla che l indivuiduo abbia senso (path ok, neinte ripetizioni e inizia con la città 1)
 bool check_individual(const Individual &individual, int number_of_cities) {
     if ((int)individual.path.size() != number_of_cities) {
         return false;
@@ -154,7 +155,7 @@ Individual generate_random_individual(Random &rnd, int number_of_cities) {
     return individual;
 }
 
-//crea N individui(percorsi) casuali -> Popolazione
+//crea N individui(percorsi) casuali -> Popolazione. E' un vettore di individui.
 vector<Individual> generate_population(Random &rnd, int population_size, int number_of_cities) {
     vector<Individual> population;
 
@@ -255,6 +256,8 @@ Individual make_child_from_parents(const Individual &first_parent, const Individ
     return child;
 }
 
+
+//Ritorna i due figli
 pair<Individual, Individual> crossover(Random &rnd, const Individual &mother, const Individual &father) {
     int number_of_cities = mother.path.size();
 
@@ -474,7 +477,7 @@ int main() {
     const double shift_probability = 0.10;
     const double swap_probability = 0.10;
 
-    //early stopping
+    //servono per far funzionare l'early stopping
     vector<double> early_stopping_best(number_of_generations + 1);  
     vector<double> early_stopping_best_half(number_of_generations + 1);
 
