@@ -559,13 +559,6 @@ void save_best_path(const Individual &best, const string &filename) {
 }
 
 
-//FUNZIONI PER IL PRINT 
-string filename_with_rank(const string &base, int rank) {
-    stringstream ss;
-    ss << "OUTPUT_SEQUENTIAL/" << base << "_sequential_rank_" << rank << ".dat";
-    return ss.str();
-}
-
 string filename_with_rank_and_extension(const string &base, int rank, const string &extension) {
     stringstream ss;
     ss << "OUTPUT_SEQUENTIAL/" << base << "_sequential_rank_" << rank << extension;

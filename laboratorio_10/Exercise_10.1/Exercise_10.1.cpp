@@ -540,13 +540,6 @@ void save_best_path(const Individual &best, const string &filename) {
     output.close();
 }
 
-
-string filename_with_rank(const string &base, int rank) {
-    stringstream ss;
-    ss << "OUTPUT/" << base << "_parallel_rank_" << rank << ".dat";
-    return ss.str();
-}
-
 string filename_with_rank_and_extension(const string &base, int rank, const string &extension) {
     stringstream ss;
     ss << "OUTPUT/" << base << "_parallel_rank_" << rank << extension;
